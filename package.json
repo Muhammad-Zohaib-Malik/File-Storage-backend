@@ -1,10 +1,10 @@
 {
-  "name": "01_intro-to-express",
+  "name": "file-storage-backend",
   "version": "1.0.0",
   "main": "app.js",
   "type": "module",
   "scripts": {
-    "dev": "node --env-file=.env --watch app.js",
+    "dev": "node --watch app.js",
     "setup": "node --env-file=.env config/setup.js",
     "format": "prettier . --write"
   },
