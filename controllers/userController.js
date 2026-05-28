@@ -173,7 +173,7 @@ export const login = async (req, res) => {
     httpOnly: true,
     signed: true,
     maxAge: 60 * 1000 * 60 * 24 * 7,
-    sameSite: "lax",
+    sameSite: "none",
   });
   res.json({ message: "Logged In" });
 };
@@ -362,7 +362,7 @@ export const loginWithGoogle = async (req, res, next) => {
       httpOnly: true,
       signed: true,
       maxAge: 1000 * 60 * 60 * 24 * 7,
-      sameSite: "lax",
+      sameSite: "none",
     });
 
     return res.status(user.isNew ? 201 : 200).json({
@@ -388,7 +388,7 @@ export const loginWithGithub = async (req, res, next) => {
   const url = github.createAuthorizationURL(state, scopes);
   const cookieConfig = {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: "none",
   };
   res.cookie("github_oauth", state, cookieConfig);
   res.redirect(url.href);
@@ -518,7 +518,7 @@ export const githubLoginCallback = async (req, res, next) => {
       httpOnly: true,
       signed: true,
       maxAge: 1000 * 60 * 60 * 24 * 7,
-      sameSite: "lax",
+      sameSite: "none",
     });
     res.redirect(process.env.CLIENT_URL1 || process.env.CLIENT_URL2);
   } catch (error) {
