@@ -65,7 +65,7 @@ export const register = async (req, res, next) => {
           userId,
         },
       ],
-      { session }
+      { session },
     );
 
     await User.create(
@@ -79,7 +79,7 @@ export const register = async (req, res, next) => {
           createdWith: "email",
         },
       ],
-      { session }
+      { session },
     );
 
     await session.commitTransaction();
@@ -124,6 +124,15 @@ export const login = async (req, res) => {
     return res.status(404).json({ error: "Invalid Credentials" });
   }
 
+  // If MFA is enabled, don't log in yet — require TOTP verification
+  if (user.isMfaEnabled) {
+    const mfaToken = crypto.randomUUID();
+    await redisClient.set(`mfa_pending:${mfaToken}`, user._id.toString(), {
+      EX: 300,
+    }); // 5 min expiry
+    return res.status(200).json({ requires2fa: true, mfaToken });
+  }
+
   // const parser = new UAParser(req.headers["user-agent"]);
   // const uaResult = parser.getResult();
   // const location = await getGeoLocation();
@@ -143,7 +152,7 @@ export const login = async (req, res) => {
     `@userId:{${user.id}}`,
     {
       RETURN: [],
-    }
+    },
   );
 
   if (allSessions.documents.length >= 2) {
@@ -190,6 +199,7 @@ export const getCurrentUser = async (req, res) => {
       maxStorageInBytes: user.maxStorageInBytes,
       createdWith: user.createdWith,
       usedStorageInBytes: rootDir.size,
+      isMfaEnabled: user.isMfaEnabled || false,
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
@@ -211,7 +221,7 @@ export const logoutFromAllDevices = async (req, res) => {
     `@userId:{${session.userId}}`,
     {
       RETURN: [],
-    }
+    },
   );
   for (const session of allSession.documents) {
     await redisClient.del(session.id);
@@ -297,7 +307,7 @@ export const loginWithGoogle = async (req, res, next) => {
       const allSessions = await redisClient.ft.search(
         "userIdIdx",
         `@userId:{${user._id}}`,
-        { RETURN: [] }
+        { RETURN: [] },
       );
 
       if (allSessions.documents.length >= 2) {
@@ -390,7 +400,9 @@ export const githubLoginCallback = async (req, res, next) => {
   const clientUrl = process.env.CLIENT_URL1 || process.env.CLIENT_URL2;
 
   if (!code || !state || state !== storedState) {
-    return res.redirect(`${clientUrl}/login?error=${encodeURIComponent("Invalid state or missing code")}`);
+    return res.redirect(
+      `${clientUrl}/login?error=${encodeURIComponent("Invalid state or missing code")}`,
+    );
   }
 
   let mongooseSession;
@@ -405,7 +417,9 @@ export const githubLoginCallback = async (req, res, next) => {
     });
 
     if (!githubUserResponse.ok) {
-      return res.redirect(`${clientUrl}/login?error=${encodeURIComponent("Failed to fetch user data from GitHub")}`);
+      return res.redirect(
+        `${clientUrl}/login?error=${encodeURIComponent("Failed to fetch user data from GitHub")}`,
+      );
     }
 
     let { name, login, email, avatar_url } = await githubUserResponse.json();
@@ -417,7 +431,9 @@ export const githubLoginCallback = async (req, res, next) => {
       });
       if (emailResponse.ok) {
         const emails = await emailResponse.json();
-        const primaryEmail = emails.find((e) => e.primary && e.verified) || emails.find((e) => e.primary);
+        const primaryEmail =
+          emails.find((e) => e.primary && e.verified) ||
+          emails.find((e) => e.primary);
         if (primaryEmail) {
           email = primaryEmail.email;
         }
@@ -425,7 +441,9 @@ export const githubLoginCallback = async (req, res, next) => {
     }
 
     if (!email) {
-      return res.redirect(`${clientUrl}/login?error=${encodeURIComponent("GitHub did not return an email")}`);
+      return res.redirect(
+        `${clientUrl}/login?error=${encodeURIComponent("GitHub did not return an email")}`,
+      );
     }
 
     // Start transaction early so both existing and new user flows are covered
@@ -438,13 +456,17 @@ export const githubLoginCallback = async (req, res, next) => {
 
     if (user && user.createdWith !== "github") {
       await mongooseSession.abortTransaction();
-      return res.redirect(`${clientUrl}/login?error=${encodeURIComponent(`User already exists with ${user.createdWith} method. Try to login with ${user.createdWith}`)}`);
+      return res.redirect(
+        `${clientUrl}/login?error=${encodeURIComponent(`User already exists with ${user.createdWith} method. Try to login with ${user.createdWith}`)}`,
+      );
     }
 
     if (user) {
       if (user.IsDeleted) {
         await mongooseSession.abortTransaction();
-        return res.redirect(`${clientUrl}/login?error=${encodeURIComponent("Your account has been deleted. Contact support to recover it.")}`);
+        return res.redirect(
+          `${clientUrl}/login?error=${encodeURIComponent("Your account has been deleted. Contact support to recover it.")}`,
+        );
       }
 
       // Update avatar if changed
@@ -504,7 +526,9 @@ export const githubLoginCallback = async (req, res, next) => {
       await mongooseSession.abortTransaction();
     }
     console.error("GitHub Login Error:", error);
-    return res.redirect(`${clientUrl}/login?error=${encodeURIComponent("An error occurred during GitHub login")}`);
+    return res.redirect(
+      `${clientUrl}/login?error=${encodeURIComponent("An error occurred during GitHub login")}`,
+    );
   } finally {
     if (mongooseSession) {
       mongooseSession.endSession();
@@ -569,7 +593,7 @@ export const logoutUsingRole = async (req, res, next) => {
       `@userId:{${userId}}`,
       {
         RETURN: [],
-      }
+      },
     );
 
     for (const session of allSessions.documents) {
@@ -620,8 +644,10 @@ export const deleteUsingRoleByHardDelete = async (req, res, next) => {
     const userFiles = await File.find({ userId }).session(session);
 
     if (userFiles.length > 0) {
-      const keys = userFiles.map((file) => ({ Key: `${file._id}${file.extension}` }));
-      
+      const keys = userFiles.map((file) => ({
+        Key: `${file._id}${file.extension}`,
+      }));
+
       // AWS S3 DeleteObjectsCommand allows a maximum of 1000 objects per request
       const chunkSize = 1000;
       for (let i = 0; i < keys.length; i += chunkSize) {
@@ -629,7 +655,10 @@ export const deleteUsingRoleByHardDelete = async (req, res, next) => {
         try {
           await deleteS3FilesFromAws({ keys: chunk });
         } catch (err) {
-          console.warn(`Could not delete files chunk from S3 for user: ${userId}`, err.message);
+          console.warn(
+            `Could not delete files chunk from S3 for user: ${userId}`,
+            err.message,
+          );
         }
       }
     }
@@ -643,7 +672,7 @@ export const deleteUsingRoleByHardDelete = async (req, res, next) => {
     const allSessions = await redisClient.ft.search(
       "userIdIdx",
       `@userId:{${userId}}`,
-      { RETURN: [] }
+      { RETURN: [] },
     );
 
     for (const redisSession of allSessions.documents) {
@@ -741,7 +770,9 @@ export const updatePassword = async (req, res, next) => {
     let { password } = req.body;
 
     if (!password || password.length < 8) {
-      return res.status(400).json({ error: "Password must be at least 8 characters long." });
+      return res
+        .status(400)
+        .json({ error: "Password must be at least 8 characters long." });
     }
 
     const user = await User.findById(userId);
@@ -765,7 +796,9 @@ export const updateUsername = async (req, res, next) => {
     let { name } = req.body;
 
     if (!name || name.length < 3) {
-      return res.status(400).json({ error: "Name must be at least 3 characters long." });
+      return res
+        .status(400)
+        .json({ error: "Name must be at least 3 characters long." });
     }
 
     const user = await User.findById(userId);
@@ -781,4 +814,4 @@ export const updateUsername = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-}
+};

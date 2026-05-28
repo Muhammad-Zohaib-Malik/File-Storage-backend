@@ -26,10 +26,13 @@ import {
   verifyOTP,
 } from "../controllers/userController.js";
 
+import { verifyTotpLogin } from "../controllers/totpController.js";
+
 const router = express.Router();
 
 router.post("/register", register);
 router.post("/login", login);
+router.post("/login/verify-2fa", verifyTotpLogin);
 router.get("/", checkAuth, getCurrentUser);
 router.post("/logout", logout);
 router.post("/logout-all", checkAuth, logoutFromAllDevices);

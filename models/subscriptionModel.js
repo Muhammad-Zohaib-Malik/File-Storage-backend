@@ -40,6 +40,10 @@ const subscriptionSchema = new Schema(
     storageLabel: {
       type: String,
     },
+    isPaused: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

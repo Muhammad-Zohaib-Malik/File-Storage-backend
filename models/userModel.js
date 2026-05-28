@@ -51,6 +51,13 @@ const userSchema = new Schema(
       required: true,
       default: 500*1024*1024,
     },
+    isMfaEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    mfaSecret: {
+      type: String,
+    },
   },
   {
     strict: "throw",

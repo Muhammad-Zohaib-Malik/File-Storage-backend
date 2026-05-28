@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "node --env-file=.env --watch app.js",
     "setup": "node --env-file=.env config/setup.js",
-    "format": "prettier . --write",
-    "build":"node "
+    "format": "prettier . --write"
   },
   "keywords": [],
   "author": "",
@@ -30,9 +29,11 @@
     "jsdom": "^26.1.0",
     "mongodb": "^7.1.0",
     "mongoose": "^8.23.0",
-    "nodemailer": "^7.0.11",
+    "nodemailer": "^8.0.8",
+    "qrcode": "^1.5.4",
     "rate-limit-redis": "^4.2.1",
     "redis": "^5.1.1",
+    "speakeasy": "^2.0.0",
     "stripe": "^20.0.0",
     "ua-parser-js": "^2.0.4",
     "winston": "^3.17.0",

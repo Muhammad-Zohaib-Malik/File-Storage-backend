@@ -30,7 +30,6 @@ export const handleStripeWebhook = async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle only checkout.session.completed
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
 
@@ -84,6 +83,54 @@ export const handleStripeWebhook = async (req, res) => {
     } catch (err) {
       console.log("Error processing subscription:", err);
       return res.status(500).send("Server error");
+    }
+  } else if (event.type === "customer.subscription.updated") {
+    const stripeSubscription = event.data.object;
+    try {
+      const subscription = await Subscription.findOne({
+        stripeSubscriptionId: stripeSubscription.id,
+      });
+
+      if (subscription) {
+        subscription.isPaused = !!stripeSubscription.pause_collection;
+        subscription.status = stripeSubscription.status; // might be active, canceled, etc.
+        await subscription.save();
+
+        const user = await User.findById(subscription.userId);
+        if (user) {
+          if (subscription.isPaused) {
+            user.maxStorageInBytes = 500 * 1024 * 1024; // Free tier
+          } else if (subscription.status === "active" && subscription.storageBytes) {
+            user.maxStorageInBytes = subscription.storageBytes;
+          }
+          await user.save();
+        }
+
+        console.log(`Subscription ${subscription._id} updated from webhook`);
+      }
+    } catch (err) {
+      console.log("Error updating subscription:", err);
+    }
+  } else if (event.type === "customer.subscription.deleted") {
+    const stripeSubscription = event.data.object;
+    try {
+      const subscription = await Subscription.findOne({
+        stripeSubscriptionId: stripeSubscription.id,
+      });
+
+      if (subscription) {
+        subscription.status = "canceled";
+        await subscription.save();
+
+        const user = await User.findById(subscription.userId);
+        if (user) {
+          user.maxStorageInBytes = 500 * 1024 * 1024; // Free tier
+          await user.save();
+        }
+        console.log(`Subscription ${subscription._id} deleted from webhook`);
+      }
+    } catch (err) {
+      console.log("Error deleting subscription:", err);
     }
   }
 

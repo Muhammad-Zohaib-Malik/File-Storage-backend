@@ -7,6 +7,7 @@ import userRoutes from "./routes/userRoutes.js";
 // import loginActivityRoutes from "./routes/loginActivityRoutes.js";
 import subscriptionRoutes from "./routes/subcriptionRoutes.js";
 import webbhooksRoutes from "./routes/webhookRoutes.js";
+import totpRoutes from "./routes/totpRoutes.js";
 import { checkAuth } from "./middlewares/authMiddleware.js";
 import { connectDB } from "./config/db.js";
 import logger from "./utils/logger.js";
@@ -23,7 +24,7 @@ app.use(cookieParser(mySecretKey));
 app.use(express.json());
 app.use(helmet());
 // app.use(createRateLimiter());
-const allowedOrigins = [process.env.CLIENT_URL1, process.env.CLIENT_URL2];
+const allowedOrigins = [process.env.CLIENT_URL1, process.env.CLIENT_URL2,"http://localhost:5173"];
 
 app.use(
   cors({
@@ -54,6 +55,7 @@ app.use("/file", checkAuth, fileRoutes);
 app.use("/user", userRoutes);
 // app.use("/latest-login", checkAuth, loginActivityRoutes);
 app.use("/subscriptions", checkAuth, subscriptionRoutes);
+app.use("/", checkAuth,totpRoutes);
 
 app.use((err, req, res, next) => {
   logger.error("Error occurred:", err);
