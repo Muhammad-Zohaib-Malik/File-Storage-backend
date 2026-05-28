@@ -20,6 +20,7 @@ await connectDB();
 
 const app = express();
 app.use("/webhooks", webbhooksRoutes);
+app.set("trust proxy", 1);
 app.use(cookieParser(mySecretKey));
 app.use(express.json());
 app.use(helmet());
