@@ -19,7 +19,7 @@ export const PRICE_TO_STORAGE_BYTES = {
   price_1SdlZM3cVYZiLez6gO6iXkKd: 10 * TB,
 };
 
-export const handleStripeWebhook = async (req, res) => {
+export const handleStripeWebhook = async (req, res, next) => {
   const sig = req.headers["stripe-signature"];
   let event;
 

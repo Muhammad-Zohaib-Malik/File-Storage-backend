@@ -1,6 +1,8 @@
 import Stripe from "stripe";
 import Subscription from "../models/subscriptionModel.js";
 import User from "../models/userModel.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 
 const stripe = new Stripe(process.env.STRIPE_API_KEY);
 const BASE_URL = process.env.BASE_URL;
@@ -29,7 +31,7 @@ export const createSubscription = async (req, res, next) => {
 
     await subscription.save();
 
-    res.json(checkoutSession.url);
+    res.json(new ApiResponse(200, checkoutSession.url));
   } catch (err) {
     console.log(err);
     next(err);
@@ -43,7 +45,7 @@ export const getCurrentSubscription = async (req, res, next) => {
       status: "active",
     }).sort({ createdAt: -1 });
 
-    res.json(subscription);
+    res.json(new ApiResponse(200, subscription));
   } catch (err) {
     console.log(err);
     next(err);
@@ -58,7 +60,7 @@ export const pauseSubscription = async (req, res, next) => {
     }).sort({ createdAt: -1 });
 
     if (!subscription || !subscription.stripeSubscriptionId) {
-      return res.status(404).json({ message: "No active subscription found" });
+      throw new ApiError(404, "No active subscription found");
     }
 
     await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
@@ -74,7 +76,7 @@ export const pauseSubscription = async (req, res, next) => {
       await user.save();
     }
 
-    res.json(subscription);
+    res.json(new ApiResponse(200, subscription));
   } catch (err) {
     console.log(err);
     next(err);
@@ -89,7 +91,7 @@ export const resumeSubscription = async (req, res, next) => {
     }).sort({ createdAt: -1 });
 
     if (!subscription || !subscription.stripeSubscriptionId) {
-      return res.status(404).json({ message: "No active subscription found" });
+      throw new ApiError(404, "No active subscription found");
     }
 
     await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
@@ -105,7 +107,7 @@ export const resumeSubscription = async (req, res, next) => {
       await user.save();
     }
 
-    res.json(subscription);
+    res.json(new ApiResponse(200, subscription));
   } catch (err) {
     console.log(err);
     next(err);
@@ -120,7 +122,7 @@ export const cancelSubscription = async (req, res, next) => {
     }).sort({ createdAt: -1 });
 
     if (!subscription || !subscription.stripeSubscriptionId) {
-      return res.status(404).json({ message: "No active subscription found" });
+      throw new ApiError(404, "No active subscription found");
     }
 
     await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
@@ -134,7 +136,7 @@ export const cancelSubscription = async (req, res, next) => {
       await user.save();
     }
 
-    res.json(subscription);
+    res.json(new ApiResponse(200, subscription));
   } catch (err) {
     console.log(err);
     next(err);
@@ -147,7 +149,7 @@ export const getAllSubscriptions = async (req, res, next) => {
       userId: req.user._id,
     }).sort({ createdAt: -1 });
 
-    res.json(subscriptions);
+    res.json(new ApiResponse(200, subscriptions));
   } catch (err) {
     console.log(err);
     next(err);

@@ -1,10 +1,11 @@
 import crypto from "crypto";
+import { ApiError } from "../utils/ApiError.js";
 
 const GITHUB_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 
 export const verifyGithubSignature = (req, res, next) => {
   const originalSignature = req.headers["x-hub-signature-256"];
-  if (!originalSignature) return res.status(401).send("Invalid signature");
+  if (!originalSignature) return next(new ApiError(401, "Invalid signature"));
   const generatedSignature =
     "sha256=" +
     crypto
@@ -15,11 +16,11 @@ export const verifyGithubSignature = (req, res, next) => {
   const buf2 = Buffer.from(originalSignature);
 
   if (buf1.length !== buf2.length) {
-    return res.status(401).send("Invalid signature");
+    return next(new ApiError(401, "Invalid signature"));
   }
 
   if (!crypto.timingSafeEqual(buf1, buf2)) {
-    return res.status(401).send("Invalid Signature");
+    return next(new ApiError(401, "Invalid Signature"));
   }
 
   next();

@@ -11,6 +11,8 @@ import {
 } from "../services/s3.js";
 import { createCloudGetFrontSignedurl } from "../services/cloudfront.js";
 import { sendFileLink } from "../utils/nodemailer.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 
 const window = new JSDOM("").window;
 const purify = DOMPurify(window);
@@ -36,13 +38,13 @@ export const renameFile = async (req, res, next) => {
 
   // Check if file exists
   if (!file) {
-    return res.status(404).json({ error: "File not found!" });
+    return next(new ApiError(404, "File not found!"));
   }
 
   try {
     file.name = newFilename;
     await file.save();
-    return res.status(200).json({ message: "Renamed" });
+    return res.status(200).json(new ApiResponse(200, null, "Renamed"));
   } catch (err) {
     console.log(err);
     err.status = 500;
@@ -63,7 +65,7 @@ export const uploadToAws = async (req, res, next) => {
 
     // Check if parent directory exists
     if (!parentDirData) {
-      return res.status(404).json({ error: "Parent directory not found!" });
+      throw new ApiError(404, "Parent directory not found!");
     }
 
     const filename = req.body.name || "Untitled";
@@ -74,7 +76,7 @@ export const uploadToAws = async (req, res, next) => {
     const remainingSpace = user.maxStorageInBytes - rootDir.size;
 
     if (filesize > remainingSpace) {
-      return res.status(507).json({ error: "Not Enough Storage" });
+      throw new ApiError(507, "Not Enough Storage");
     }
 
     const insertedFile = await File.insertOne({
@@ -95,7 +97,7 @@ export const uploadToAws = async (req, res, next) => {
       ContentType,
     });
 
-    res.json({ uploadSignedUrl, fileId });
+    res.json(new ApiResponse(200, { uploadSignedUrl, fileId }));
   } catch (err) {
     console.log(err);
     next(err);
@@ -106,7 +108,7 @@ export const uploadToAws = async (req, res, next) => {
 export const uploadToAwsComplete = async (req, res, next) => {
   const file = await File.findById(req.body.fileId);
   if (!file) {
-    return res.status(404).json({ error: "File not found!" });
+    return next(new ApiError(404, "File not found!"));
   }
   const key = `${file._id}${file.extension}`;
 
@@ -115,9 +117,7 @@ export const uploadToAwsComplete = async (req, res, next) => {
 
     if (file.size !== ContentLength) {
       await file.deleteOne();
-      return res.status(400).json({
-        error: "File size does not match",
-      });
+      throw new ApiError(400, "File size does not match");
     }
 
     file.isUploading = false;
@@ -125,14 +125,14 @@ export const uploadToAwsComplete = async (req, res, next) => {
 
     await updateDirectoriesSize(file.parentDirId, file.size);
 
-    res.json({ message: "Upload complete" });
+    res.json(new ApiResponse(200, null, "Upload complete"));
   } catch (error) {
     await file.deleteOne();
     next(error);
   }
 };
 
-export const getFileFromAws = async (req, res) => {
+export const getFileFromAws = async (req, res, next) => {
   const { id } = req.params;
   const fileData = await File.findOne({
     _id: id,
@@ -140,7 +140,7 @@ export const getFileFromAws = async (req, res) => {
   }).lean();
   // Check if file exists
   if (!fileData) {
-    return res.status(404).json({ error: "File not found!" });
+    return next(new ApiError(404, "File not found!"));
   }
 
   const key = `${id}${fileData.extension}`;
@@ -169,7 +169,7 @@ export const deleteFileFromAws = async (req, res, next) => {
   });
 
   if (!file) {
-    return res.status(404).json({ error: "File not found!" });
+    return next(new ApiError(404, "File not found!"));
   }
   const key = `${file._id}${file.extension}`;
 
@@ -177,7 +177,7 @@ export const deleteFileFromAws = async (req, res, next) => {
     await file.deleteOne();
     await updateDirectoriesSize(file.parentDirId, -file.size);
     await deleteS3FileFromAws({ key });
-    return res.status(200).json({ message: "File Deleted Successfully" });
+    return res.status(200).json(new ApiResponse(200, null, "File Deleted Successfully"));
   } catch (err) {
     next(err);
   }
@@ -191,7 +191,7 @@ export const shareFileViaEmail = async (req, res, next) => {
   }).lean();
 
   if (!fileData) {
-    return res.status(404).json({ error: "File not found!" });
+    return next(new ApiError(404, "File not found!"));
   }
 
   const key = `${fileId}${fileData.extension}`;
@@ -201,7 +201,7 @@ export const shareFileViaEmail = async (req, res, next) => {
   });
   try {
     await sendFileLink(email, fileUrl, fileData.name);
-    res.json({ success: true, message: "File shared via email!" });
+    res.json(new ApiResponse(200, null, "File shared via email!"));
   } catch (error) {
     next(error);
   }

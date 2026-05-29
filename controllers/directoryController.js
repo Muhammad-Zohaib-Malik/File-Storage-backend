@@ -4,26 +4,30 @@ import { JSDOM } from "jsdom";
 import DOMPurify from "dompurify";
 import { updateDirectoriesSize } from "./fileController.js";
 import { deleteS3FilesFromAws } from "../services/s3.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 const window = new JSDOM("").window;
 const purify = DOMPurify(window);
 
-export const getDirectory = async (req, res) => {
-  const user = req.user;
-  const _id = req.params.id || user.rootDirId.toString();
-  const directoryData = await Directory.findOne({ _id }).lean();
-  if (!directoryData) {
-    return res
-      .status(404)
-      .json({ error: "Directory not found or you do not have access to it!" });
-  }
+export const getDirectory = async (req, res, next) => {
+  try {
+    const user = req.user;
+    const _id = req.params.id || user.rootDirId.toString();
+    const directoryData = await Directory.findOne({ _id }).lean();
+    if (!directoryData) {
+      throw new ApiError(404, "Directory not found or you do not have access to it!");
+    }
 
-  const files = await File.find({ parentDirId: directoryData._id }).lean();
-  const directories = await Directory.find({ parentDirId: _id }).lean();
-  return res.status(200).json({
-    ...directoryData,
-    files: files.map((dir) => ({ ...dir, id: dir._id })),
-    directories: directories.map((dir) => ({ ...dir, id: dir._id })),
-  });
+    const files = await File.find({ parentDirId: directoryData._id }).lean();
+    const directories = await Directory.find({ parentDirId: _id }).lean();
+    return res.status(200).json(new ApiResponse(200, {
+      ...directoryData,
+      files: files.map((dir) => ({ ...dir, id: dir._id })),
+      directories: directories.map((dir) => ({ ...dir, id: dir._id })),
+    }));
+  } catch (err) {
+    next(err);
+  }
 };
 
 export const createDirectory = async (req, res, next) => {
@@ -38,9 +42,7 @@ export const createDirectory = async (req, res, next) => {
     }).lean();
 
     if (!parentDir)
-      return res
-        .status(404)
-        .json({ message: "Parent Directory Does not exist!" });
+      throw new ApiError(404, "Parent Directory Does not exist!");
 
     await Directory.insertOne({
       name: dirname,
@@ -48,12 +50,10 @@ export const createDirectory = async (req, res, next) => {
       userId: user._id,
     });
 
-    return res.status(201).json({ message: "Directory Created!" });
+    return res.status(201).json(new ApiResponse(201, null, "Directory Created!"));
   } catch (err) {
     if (err.code === 121) {
-      res
-        .status(400)
-        .json({ error: "Invalid input, please enter valid details" });
+      next(new ApiError(400, "Invalid input, please enter valid details"));
     } else {
       next(err);
     }
@@ -73,7 +73,7 @@ export const renameDirectory = async (req, res, next) => {
       },
       { name: newDirName }
     );
-    res.status(200).json({ message: "Directory Renamed!" });
+    res.status(200).json(new ApiResponse(200, null, "Directory Renamed!"));
   } catch (err) {
     next(err);
   }
@@ -89,7 +89,7 @@ export const deleteDirectory = async (req, res, next) => {
     }).lean();
 
     if (!directoryData) {
-      return res.status(404).json({ error: "Directory not found!" });
+      throw new ApiError(404, "Directory not found!");
     }
 
     async function getDirectoryContents(id) {
@@ -128,7 +128,7 @@ export const deleteDirectory = async (req, res, next) => {
     });
 
     await updateDirectoriesSize(directoryData.parentDirId, -directoryData.size);
-    return res.json({ message: "Files deleted successfully" });
+    return res.status(200).json(new ApiResponse(200, null, "Files deleted successfully"));
   } catch (err) {
     next(err);
   }

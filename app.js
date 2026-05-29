@@ -12,6 +12,8 @@ import { checkAuth } from "./middlewares/authMiddleware.js";
 import { connectDB } from "./config/db.js";
 import logger from "./utils/logger.js";
 import helmet from "helmet";
+import { ApiResponse } from "./utils/ApiResponse.js";
+import { ApiError } from "./utils/ApiError.js";
 
 // import createRateLimiter from "./utils/rateLimiter.js";
 
@@ -43,12 +45,12 @@ app.use(
 const PORT = process.env.PORT || 4000 
 
 app.get("/", (req, res) => {
-  res.status(200).json({ message: "Hello World from storageApp backend" });
+  res.status(200).json(new ApiResponse(200, null, "Hello World from storageApp backend"));
 });
 
 app.get("/health", (req, res) => {
   logger.info("Health check successfully");
-  res.status(200).json({ message: "Health check successfully" });
+  res.status(200).json(new ApiResponse(200, null, "Health check successfully"));
 });
 
 app.use("/directory", checkAuth, directoryRoutes);
@@ -60,7 +62,20 @@ app.use("/", checkAuth,totpRoutes);
 
 app.use((err, req, res, next) => {
   logger.error("Error occurred:", err);
-  res.status(err.status || 500).json({ error: "Something went wrong!" });
+  
+  if (err instanceof ApiError) {
+    return res.status(err.statusCode).json({
+      success: err.success,
+      message: err.message,
+      errors: err.errors
+    });
+  }
+
+  return res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Something went wrong!",
+    errors: []
+  });
 });
 
 app.listen(PORT, () => {

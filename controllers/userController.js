@@ -25,12 +25,13 @@ import { github } from "../utils/github.js";
 import * as arctic from "arctic";
 import { UAParser } from "ua-parser-js";
 import { LoginActivity } from "../models/loginModel.js";
-// import { getGeoLocation } from "../utils/getGeoLocation.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 
 export const register = async (req, res, next) => {
   const { success, error, data } = registerSchema.safeParse(req.body);
   if (!success) {
-    return res.status(400).json({ error: error.flatten().fieldErrors });
+    return next(new ApiError(400, "Validation Error", error.flatten().fieldErrors));
   }
 
   let { name, email, password, otp } = data;
@@ -43,7 +44,7 @@ export const register = async (req, res, next) => {
   const otpRecord = await Otp.findOne({ email, otp });
 
   if (!otpRecord) {
-    return res.status(400).json({ error: "Invalid or expired OTP" });
+    return next(new ApiError(400, "Invalid or expired OTP"));
   }
 
   await otpRecord.deleteOne();
@@ -85,28 +86,24 @@ export const register = async (req, res, next) => {
     await session.commitTransaction();
     session.endSession();
 
-    res.status(201).json({ message: "User Registered Successfully" });
+    res.status(201).json(new ApiResponse(201, null, "User Registered Successfully"));
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
 
     if (err.code === 11000 && err.keyValue.email) {
-      return res.status(409).json({
-        error: "This email already exists",
-        message:
-          "A user with this email address already exists. Please try logging in or use a different email.",
-      });
+      return next(new ApiError(409, "A user with this email address already exists. Please try logging in or use a different email."));
     }
 
     next(err);
   }
 };
 
-export const login = async (req, res) => {
+export const login = async (req, res, next) => {
   const { success, error, data } = loginSchema.safeParse(req.body);
 
   if (!success) {
-    return res.status(400).json({ error: error.flatten().fieldErrors });
+    return next(new ApiError(400, "Validation Error", error.flatten().fieldErrors));
   }
   let { email, password } = data;
 
@@ -116,12 +113,12 @@ export const login = async (req, res) => {
   const user = await User.findOne({ email });
 
   if (!user) {
-    return res.status(404).json({ error: "Invalid Credentials" });
+    return next(new ApiError(404, "Invalid Credentials"));
   }
 
   const passwordMatch = await user.isPasswordCorrect(password);
   if (!passwordMatch) {
-    return res.status(404).json({ error: "Invalid Credentials" });
+    return next(new ApiError(404, "Invalid Credentials"));
   }
 
   // If MFA is enabled, don't log in yet — require TOTP verification
@@ -130,7 +127,7 @@ export const login = async (req, res) => {
     await redisClient.set(`mfa_pending:${mfaToken}`, user._id.toString(), {
       EX: 300,
     }); // 5 min expiry
-    return res.status(200).json({ requires2fa: true, mfaToken });
+    return res.status(200).json(new ApiResponse(200, { requires2fa: true, mfaToken }));
   }
 
   // const parser = new UAParser(req.headers["user-agent"]);
@@ -177,23 +174,23 @@ export const login = async (req, res) => {
     secure:true
 
   });
-  res.json({ message: "Logged In" });
+  res.status(200).json(new ApiResponse(200, null, "Logged In"));
 };
 
-export const getCurrentUser = async (req, res) => {
+export const getCurrentUser = async (req, res, next) => {
   try {
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: "Unauthorized: User ID missing" });
+      throw new ApiError(401, "Unauthorized: User ID missing");
     }
 
     const user = await User.findById(req.user._id).lean();
     const rootDir = await Directory.findById(user.rootDirId).lean();
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      throw new ApiError(404, "User not found");
     }
 
-    res.status(200).json({
+    res.status(200).json(new ApiResponse(200, {
       name: user.name,
       email: user.email,
       picture: user.picture,
@@ -202,55 +199,61 @@ export const getCurrentUser = async (req, res) => {
       createdWith: user.createdWith,
       usedStorageInBytes: rootDir.size,
       isMfaEnabled: user.isMfaEnabled || false,
-    });
+    }));
   } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+    next(error);
   }
 };
 
-export const logout = async (req, res) => {
-  const { sid } = req.signedCookies;
-  await redisClient.del(`session:${sid}`);
-  res.clearCookie("sid");
-  res.status(204).end();
-};
-
-export const logoutFromAllDevices = async (req, res) => {
-  const { sid } = req.signedCookies;
-  const session = await redisClient.json.get(`session:${sid}`);
-  const allSession = await redisClient.ft.search(
-    "userIdIdx",
-    `@userId:{${session.userId}}`,
-    {
-      RETURN: [],
-    },
-  );
-  for (const session of allSession.documents) {
-    await redisClient.del(session.id);
+export const logout = async (req, res, next) => {
+  try {
+    const { sid } = req.signedCookies;
+    await redisClient.del(`session:${sid}`);
+    res.clearCookie("sid");
+    res.status(204).end();
+  } catch (error) {
+    next(error);
   }
-  res.clearCookie("sid");
-
-  res.status(204).end();
 };
 
-export const sendOTP = async (req, res) => {
+export const logoutFromAllDevices = async (req, res, next) => {
+  try {
+    const { sid } = req.signedCookies;
+    const session = await redisClient.json.get(`session:${sid}`);
+    const allSession = await redisClient.ft.search(
+      "userIdIdx",
+      `@userId:{${session.userId}}`,
+      {
+        RETURN: [],
+      },
+    );
+    for (const session of allSession.documents) {
+      await redisClient.del(session.id);
+    }
+    res.clearCookie("sid");
+
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const sendOTP = async (req, res, next) => {
   const { success, data } = sendOtpSchema.safeParse(req.body);
   if (!success) {
-    return res.status(400).json({
-      error: error.flatten().fieldErrors,
-    });
+    return next(new ApiError(400, "Validation Error", error.flatten().fieldErrors));
   }
 
   let { email } = data;
   email = purify.sanitize(email);
   const resData = await sendOtp(email);
-  res.json(resData);
+  res.json(new ApiResponse(200, resData));
 };
 
-export const verifyOTP = async (req, res) => {
+export const verifyOTP = async (req, res, next) => {
   const { success, data } = otpSchema.safeParse(req.body);
   if (!success) {
-    return res.status(400).json({ error: z.flattenError(error).fieldErrors });
+    return next(new ApiError(400, "Validation Error", z.flattenError(error).fieldErrors));
   }
 
   try {
@@ -260,20 +263,20 @@ export const verifyOTP = async (req, res) => {
     const otpRecord = await Otp.findOne({ email, otp });
 
     if (!otpRecord) {
-      return res.status(400).json({ error: "Invalid or expired OTP" });
+      throw new ApiError(400, "Invalid or expired OTP");
     }
 
-    res.json({ message: "OTP Verified successfully" });
+    res.json(new ApiResponse(200, null, "OTP Verified successfully"));
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Server error" });
+    next(err);
   }
 };
 
 export const loginWithGoogle = async (req, res, next) => {
   const { success, data, error } = loginWithGoogleSchema.safeParse(req.body);
   if (!success) {
-    return res.status(400).json({ error: error.flatten().fieldErrors });
+    return next(new ApiError(400, "Validation Error", error.flatten().fieldErrors));
   }
 
   const { code } = data;
@@ -292,17 +295,13 @@ export const loginWithGoogle = async (req, res, next) => {
 
     if (user && user.createdWith !== "google") {
       await mongooseSession.abortTransaction();
-      return res.status(400).json({
-        error: `User already exists with ${user.createdWith} method. Try to login with ${user.createdWith}`,
-      });
+      throw new ApiError(400, `User already exists with ${user.createdWith} method. Try to login with ${user.createdWith}`);
     }
 
     if (user) {
       if (user.IsDeleted) {
         await mongooseSession.abortTransaction();
-        return res.status(403).json({
-          error: "Your account has been deleted. Contact App Owner to recover",
-        });
+        throw new ApiError(403, "Your account has been deleted. Contact App Owner to recover");
       }
 
       // Limit sessions to max 2
@@ -369,10 +368,11 @@ export const loginWithGoogle = async (req, res, next) => {
 
     });
 
-    return res.status(user.isNew ? 201 : 200).json({
-      message: user.isNew ? "Account created and logged In" : "Logged In",
-      user,
-    });
+    return res.status(user.isNew ? 201 : 200).json(new ApiResponse(
+      user.isNew ? 201 : 200,
+      { user },
+      user.isNew ? "Account created and logged In" : "Logged In"
+    ));
   } catch (err) {
     if (mongooseSession) {
       await mongooseSession.abortTransaction();
@@ -543,7 +543,7 @@ export const githubLoginCallback = async (req, res, next) => {
   }
 };
 
-export const getAllUsers = async (req, res) => {
+export const getAllUsers = async (req, res, next) => {
   try {
     const isOwner = req.user.role === "Owner";
     const query = isOwner ? {} : { IsDeleted: false };
@@ -580,10 +580,10 @@ export const getAllUsers = async (req, res) => {
       role: user.role,
     }));
 
-    res.status(200).json({ users: usersWithStatus });
+    res.status(200).json(new ApiResponse(200, { users: usersWithStatus }));
   } catch (error) {
     console.error("Error fetching users:", error);
-    res.status(500).json({ message: "Server error" });
+    next(error);
   }
 };
 
@@ -591,9 +591,7 @@ export const logoutUsingRole = async (req, res, next) => {
   try {
     const userId = req.params.userId;
     if (!userId) {
-      return res
-        .status(400)
-        .json({ message: "Invalid or missing userId in URL." });
+      throw new ApiError(400, "Invalid or missing userId in URL.");
     }
     const allSessions = await redisClient.ft.search(
       "userIdIdx",
@@ -607,9 +605,7 @@ export const logoutUsingRole = async (req, res, next) => {
       await redisClient.del(session.id);
     }
 
-    res
-      .status(200)
-      .json({ message: "Logged out from all sessions successfully." });
+    res.status(200).json(new ApiResponse(200, null, "Logged out from all sessions successfully."));
   } catch (err) {
     next(err);
   }
@@ -619,7 +615,7 @@ export const deleteUsingRoleBySoftDelete = async (req, res, next) => {
   const { userId } = req.params;
 
   if (req.user._id.toString() === userId.toString()) {
-    return res.status(403).json({ message: "You can't delete yourself." });
+    return next(new ApiError(403, "You can't delete yourself."));
   }
 
   try {
@@ -627,9 +623,7 @@ export const deleteUsingRoleBySoftDelete = async (req, res, next) => {
       IsDeleted: true,
     });
 
-    return res
-      .status(200)
-      .json({ message: "User and all related data deleted successfully." });
+    return res.status(200).json(new ApiResponse(200, null, "User and all related data deleted successfully."));
   } catch (err) {
     next(err);
   }
@@ -642,7 +636,7 @@ export const deleteUsingRoleByHardDelete = async (req, res, next) => {
     const { userId } = req.params;
 
     if (req.user._id.toString() === userId.toString()) {
-      return res.status(403).json({ message: "You can't delete yourself." });
+      throw new ApiError(403, "You can't delete yourself.");
     }
 
     session.startTransaction();
@@ -687,7 +681,7 @@ export const deleteUsingRoleByHardDelete = async (req, res, next) => {
     }
 
     await session.commitTransaction();
-    res.status(200).json("User Deleted successfully");
+    res.status(200).json(new ApiResponse(200, null, "User Deleted successfully"));
   } catch (err) {
     await session.abortTransaction();
     next(err);
@@ -700,30 +694,26 @@ export const recoverUserById = async (req, res, next) => {
   try {
     const { userId } = req.params;
     if (req.user.role !== "Owner") {
-      return res
-        .status(403)
-        .json({ message: "Only owners can recover users." });
+      throw new ApiError(403, "Only owners can recover users.");
     }
 
     if (req.user._id.toString() === userId.toString()) {
-      return res.status(403).json({ message: "You can't recover yourself." });
+      throw new ApiError(403, "You can't recover yourself.");
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found." });
+      throw new ApiError(404, "User not found.");
     }
 
     if (user.IsDeleted === false) {
-      return res.status(400).json({ message: "User is already active." });
+      throw new ApiError(400, "User is already active.");
     }
 
     user.IsDeleted = false;
     await user.save();
 
-    return res
-      .status(200)
-      .json({ message: "User and all related data recover successfully." });
+    return res.status(200).json(new ApiResponse(200, null, "User and all related data recover successfully."));
   } catch (error) {
     next(error);
   }
@@ -737,35 +727,29 @@ export const changeRole = async (req, res, next) => {
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "User not found." });
+      throw new ApiError(404, "User not found.");
     }
     if (req.user._id.toString() === userId.toString()) {
-      return res.status(403).json({ message: "You can't change your role." });
+      throw new ApiError(403, "You can't change your role.");
     }
 
     if (!ownerProvidedRole.includes(role)) {
-      return res
-        .status(400)
-        .json({ message: "You have no permission to change this role." });
+      throw new ApiError(400, "You have no permission to change this role.");
     }
 
     if (req.user.role === "Owner") {
       await User.findByIdAndUpdate(userId, { role }, { new: true });
-      return res.status(200).json({ message: "Role updated by Owner." });
+      return res.status(200).json(new ApiResponse(200, null, "Role updated by Owner."));
     }
     if (req.user.role === "Admin") {
       if (role === "Owner" || user.role === "Owner") {
-        return res
-          .status(403)
-          .json({ message: "Admin cannot change Owner's role." });
+        throw new ApiError(403, "Admin cannot change Owner's role.");
       }
       await User.findByIdAndUpdate(userId, { role }, { new: true });
-      return res.status(200).json({ message: "Role updated by Admin." });
+      return res.status(200).json(new ApiResponse(200, null, "Role updated by Admin."));
     }
 
-    return res
-      .status(403)
-      .json({ message: "You are not allowed to change roles." });
+    throw new ApiError(403, "You are not allowed to change roles.");
   } catch (error) {
     next(error);
   }
@@ -777,21 +761,19 @@ export const updatePassword = async (req, res, next) => {
     let { password } = req.body;
 
     if (!password || password.length < 8) {
-      return res
-        .status(400)
-        .json({ error: "Password must be at least 8 characters long." });
+      throw new ApiError(400, "Password must be at least 8 characters long.");
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ error: "User not found." });
+      throw new ApiError(404, "User not found.");
     }
 
     password = purify.sanitize(password);
     user.password = password;
     await user.save();
 
-    return res.status(200).json({ message: "Password updated successfully." });
+    return res.status(200).json(new ApiResponse(200, null, "Password updated successfully."));
   } catch (error) {
     next(error);
   }
@@ -803,21 +785,19 @@ export const updateUsername = async (req, res, next) => {
     let { name } = req.body;
 
     if (!name || name.length < 3) {
-      return res
-        .status(400)
-        .json({ error: "Name must be at least 3 characters long." });
+      throw new ApiError(400, "Name must be at least 3 characters long.");
     }
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ error: "User not found." });
+      throw new ApiError(404, "User not found.");
     }
 
     name = purify.sanitize(name);
     user.name = name;
     await user.save();
 
-    return res.status(200).json({ message: "Name updated successfully." });
+    return res.status(200).json(new ApiResponse(200, null, "Name updated successfully."));
   } catch (error) {
     next(error);
   }

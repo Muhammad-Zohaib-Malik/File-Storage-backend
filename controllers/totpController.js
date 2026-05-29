@@ -2,13 +2,15 @@ import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import User from "../models/userModel.js";
 import redisClient from "../config/redis.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
 
 export const setupTotp = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id);
 
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      throw new ApiError(404, "User not found");
     }
 
     const secret = speakeasy.generateSecret({
@@ -23,11 +25,11 @@ export const setupTotp = async (req, res, next) => {
 
     const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
 
-    res.status(200).json({
+    res.status(200).json(new ApiResponse(200, {
       secret: secret.base32, // Manual entry fallback
       qrCode: qrCodeUrl,
       otpauthUrl: secret.otpauth_url,
-    });
+    }));
   } catch (err) {
     next(err);
   }
@@ -38,13 +40,13 @@ export const verify2fa = async (req, res, next) => {
     const { token } = req.body;
 
     if (!token) {
-      return res.status(400).json({ error: "Token is required" });
+      throw new ApiError(400, "Token is required");
     }
 
     const user = await User.findById(req.user._id);
 
     if (!user || !user.mfaSecret) {
-      return res.status(400).json({ error: "MFA setup not initiated" });
+      throw new ApiError(400, "MFA setup not initiated");
     }
 
     const verified = speakeasy.totp.verify({
@@ -55,13 +57,13 @@ export const verify2fa = async (req, res, next) => {
     });
 
     if (!verified) {
-      return res.status(400).json({ error: "Invalid token" });
+      throw new ApiError(400, "Invalid token");
     }
 
     user.isMfaEnabled = true;
     await user.save();
 
-    res.status(200).json({ message: "2FA verified and enabled successfully" });
+    res.status(200).json(new ApiResponse(200, null, "2FA verified and enabled successfully"));
   } catch (err) {
     next(err);
   }
@@ -72,14 +74,14 @@ export const reset2fa = async (req, res, next) => {
     const user = await User.findById(req.user._id);
 
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      throw new ApiError(404, "User not found");
     }
 
     user.isMfaEnabled = false;
     user.mfaSecret = undefined;
     await user.save();
 
-    res.status(200).json({ message: "2FA has been disabled and reset" });
+    res.status(200).json(new ApiResponse(200, null, "2FA has been disabled and reset"));
   } catch (err) {
     next(err);
   }
@@ -90,24 +92,18 @@ export const verifyTotpLogin = async (req, res, next) => {
     const { mfaToken, token } = req.body;
 
     if (!mfaToken || !token) {
-      return res
-        .status(400)
-        .json({ error: "MFA token and verification code are required" });
+      throw new ApiError(400, "MFA token and verification code are required");
     }
 
     // Retrieve the userId from the temporary MFA pending token
     const userId = await redisClient.get(`mfa_pending:${mfaToken}`);
     if (!userId) {
-      return res
-        .status(401)
-        .json({ error: "MFA session expired. Please log in again." });
+      throw new ApiError(401, "MFA session expired. Please log in again.");
     }
 
     const user = await User.findById(userId);
     if (!user || !user.isMfaEnabled || !user.mfaSecret) {
-      return res
-        .status(400)
-        .json({ error: "MFA is not configured for this user" });
+      throw new ApiError(400, "MFA is not configured for this user");
     }
 
     const verified = speakeasy.totp.verify({
@@ -118,7 +114,7 @@ export const verifyTotpLogin = async (req, res, next) => {
     });
 
     if (!verified) {
-      return res.status(400).json({ error: "Invalid verification code" });
+      throw new ApiError(400, "Invalid verification code");
     }
 
     // Delete the pending MFA token
@@ -153,7 +149,7 @@ export const verifyTotpLogin = async (req, res, next) => {
       sameSite: "lax",
     });
 
-    res.status(200).json({ message: "Logged In" });
+    res.status(200).json(new ApiResponse(200, null, "Logged In"));
   } catch (err) {
     next(err);
   }
