@@ -61,9 +61,12 @@ app.use("/subscriptions", checkAuth, subscriptionRoutes);
 app.use("/", checkAuth,totpRoutes);
 
 app.use((err, req, res, next) => {
-  logger.error("Error occurred:", err);
-  
   if (err instanceof ApiError) {
+    if (err.statusCode >= 500) {
+      logger.error("Error occurred:", err);
+    } else {
+      logger.warn(`API Error [${err.statusCode}]: ${err.message}`);
+    }
     return res.status(err.statusCode).json({
       success: err.success,
       message: err.message,
@@ -71,6 +74,7 @@ app.use((err, req, res, next) => {
     });
   }
 
+  logger.error("Error occurred:", err);
   return res.status(err.status || 500).json({
     success: false,
     message: err.message || "Something went wrong!",

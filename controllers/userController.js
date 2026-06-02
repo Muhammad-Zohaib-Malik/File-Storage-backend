@@ -379,7 +379,6 @@ export const loginWithGoogle = async (req, res, next) => {
         await mongooseSession.abortTransaction();
       } catch (abortErr) {}
     }
-    console.error("Google Login Error:", err);
     return next(err);
   } finally {
     if (mongooseSession) {
