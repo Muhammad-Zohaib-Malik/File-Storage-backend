@@ -88,7 +88,9 @@ export const register = async (req, res, next) => {
 
     res.status(201).json(new ApiResponse(201, null, "User Registered Successfully"));
   } catch (err) {
-    await session.abortTransaction();
+    try {
+      await session.abortTransaction();
+    } catch (abortErr) {}
     session.endSession();
 
     if (err.code === 11000 && err.keyValue.email) {
@@ -294,13 +296,11 @@ export const loginWithGoogle = async (req, res, next) => {
       .select("-__v");
 
     if (user && user.createdWith !== "google") {
-      await mongooseSession.abortTransaction();
       throw new ApiError(400, `User already exists with ${user.createdWith} method. Try to login with ${user.createdWith}`);
     }
 
     if (user) {
       if (user.IsDeleted) {
-        await mongooseSession.abortTransaction();
         throw new ApiError(403, "Your account has been deleted. Contact App Owner to recover");
       }
 
@@ -375,7 +375,9 @@ export const loginWithGoogle = async (req, res, next) => {
     ));
   } catch (err) {
     if (mongooseSession) {
-      await mongooseSession.abortTransaction();
+      try {
+        await mongooseSession.abortTransaction();
+      } catch (abortErr) {}
     }
     console.error("Google Login Error:", err);
     return next(err);
@@ -530,7 +532,9 @@ export const githubLoginCallback = async (req, res, next) => {
     res.redirect(process.env.CLIENT_URL1 || process.env.CLIENT_URL2);
   } catch (error) {
     if (mongooseSession) {
-      await mongooseSession.abortTransaction();
+      try {
+        await mongooseSession.abortTransaction();
+      } catch (abortErr) {}
     }
     console.error("GitHub Login Error:", error);
     return res.redirect(
@@ -633,13 +637,13 @@ export const deleteUsingRoleByHardDelete = async (req, res, next) => {
   const session = await mongoose.startSession();
 
   try {
+    session.startTransaction();
+
     const { userId } = req.params;
 
     if (req.user._id.toString() === userId.toString()) {
       throw new ApiError(403, "You can't delete yourself.");
     }
-
-    session.startTransaction();
 
     // Step 1: Delete files from AWS S3
     const userFiles = await File.find({ userId }).session(session);
@@ -683,7 +687,9 @@ export const deleteUsingRoleByHardDelete = async (req, res, next) => {
     await session.commitTransaction();
     res.status(200).json(new ApiResponse(200, null, "User Deleted successfully"));
   } catch (err) {
-    await session.abortTransaction();
+    try {
+      await session.abortTransaction();
+    } catch (abortErr) {}
     next(err);
   } finally {
     session.endSession();
