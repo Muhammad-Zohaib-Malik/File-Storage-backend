@@ -38,9 +38,8 @@ export async function sendOtp(email) {
     </div>
   `;
 
-  // Send the email
   const { data, error } = await resend.emails.send({
-    from: `"Storage App" <${fromEmail}>`,
+    from: fromEmail,
     to: [email],
     subject: "Your OTP for Storage App",
     html,
@@ -81,9 +80,8 @@ export async function sendFileLink(email, fileUrl, fileName) {
     </div>
   `;
 
-  // Send the email
   const { data, error } = await resend.emails.send({
-    from: `"Storage App" <${fromEmail}>`,
+    from: fromEmail,
     to: [email],
     subject: `File Shared ${fileName}`,
     html,
@@ -191,7 +189,7 @@ ${safeCommit}
   `;
 
   const { data, error } = await resend.emails.send({
-    from: `"Storage App 🚀" <${fromEmail}>`,
+    from: fromEmail || "onboarding@resend.dev",
     to: [email],
     subject: `Deployment ${isSuccess ? "success" : "failed"} — ${repoName}`,
     html,
