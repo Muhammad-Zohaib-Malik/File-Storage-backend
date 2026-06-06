@@ -10,7 +10,7 @@ import {
   getS3FileMetaData,
 } from "../services/s3.js";
 import { createCloudGetFrontSignedurl } from "../services/cloudfront.js";
-import { sendFileLink } from "../utils/nodemailer.js";
+import { sendFileLink } from "../utils/email.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 

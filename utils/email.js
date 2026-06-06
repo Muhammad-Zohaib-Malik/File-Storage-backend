@@ -1,5 +1,9 @@
-import nodemailer from "nodemailer";
+import { Resend } from 'resend';
 import Otp from "../models/otp.model.js";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const fromEmail = process.env.EMAIL_FROM;
 
 // 🔐 Utility to generate a 4-digit OTP
 function generateOtp() {
@@ -34,27 +38,22 @@ export async function sendOtp(email) {
     </div>
   `;
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
   // Send the email
-  const info = await transporter.sendMail({
-    from: `"Storage App" <${process.env.SMTP_USER}>`,
-    to: email,
+  const { data, error } = await resend.emails.send({
+    from: `"Storage App" <${fromEmail}>`,
+    to: [email],
     subject: "Your OTP for Storage App",
     html,
   });
 
+  if (error) {
+    throw new Error(error.message);
+  }
+
   return {
     success: true,
     message: "OTP sent successfully",
-    messageId: info.messageId,
+    messageId: data?.id,
   };
 }
 
@@ -81,27 +80,23 @@ export async function sendFileLink(email, fileUrl, fileName) {
       </div>
     </div>
   `;
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
 
   // Send the email
-  const info = await transporter.sendMail({
-    from: `"Storage App" <${process.env.SMTP_USER}>`,
-    to: email,
+  const { data, error } = await resend.emails.send({
+    from: `"Storage App" <${fromEmail}>`,
+    to: [email],
     subject: `File Shared ${fileName}`,
     html,
   });
 
+  if (error) {
+    throw new Error(error.message);
+  }
+
   return {
     success: true,
     message: "File link sent successfully",
-    messageId: info.messageId,
+    messageId: data?.id,
   };
 }
 
@@ -195,22 +190,16 @@ ${safeCommit}
   </div>
   `;
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: false,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  const info = await transporter.sendMail({
-    from: `"Storage App 🚀" <${process.env.SMTP_USER}>`,
-    to: email,
+  const { data, error } = await resend.emails.send({
+    from: `"Storage App 🚀" <${fromEmail}>`,
+    to: [email],
     subject: `Deployment ${isSuccess ? "success" : "failed"} — ${repoName}`,
     html,
   });
 
-  return { success: true, messageId: info.messageId };
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { success: true, messageId: data?.id };
 }
