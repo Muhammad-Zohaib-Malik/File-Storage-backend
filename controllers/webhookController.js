@@ -10,8 +10,9 @@ const TB = 1024 * 1024 * 1024 * 1024;
 export const PRICE_TO_STORAGE_BYTES = {
   // MONTHLY
   price_1SdlVw3cVYZiLez66kQLuZR4: 2 * TB,
-  price_1SdlYs3cVYZiLez6gCY2kxdw: 5 * TB,
-  price_1SdlZw3cVYZiLez6gO6iXkKd: 10 * TB,
+  price_1SdlXM3cVYZiLez6rmv4CnrA: 5 * TB,
+  price_1SdlYs3cVYZiLez6gCY2kxdw: 10 * TB,
+  // price_1SdlZw3cVYZiLez6gO6iXkKd: 10 * TB,
 
   // YEARLY
   price_1SdlWe3cVYZiLez6sR5G7rfy: 2 * TB,
